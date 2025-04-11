@@ -1,0 +1,28 @@
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+
+# PROMETHEUS + GRAFANA 
+
+kubectl create namespace monitoring
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add stable https://charts.helm.sh/stable
+helm repo update
+helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring 
+
+# expose port on 31001
+kubectl patch service prometheus-grafana -n monitoring --type='merge' -p '{ "spec": { "type": "NodePort", "ports": [ { "port": 80, "targetPort": 3000, "nodePort": 31001, "protocol": "TCP" } ] } }'
+
+# JAEGER
+
+kubectl create namespace observability
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+helm repo update
+helm upgrade --install jaeger jaegertracing/jaeger \
+  --namespace observability \
+  --set provisionDataStore.cassandra=false \
+  --set storage.type=memory \
+  --set query.basePath=/jaeger
+
+# expose GUI on 31002
+kubectl patch svc jaeger-query -n observability --type='merge' -p '{ "spec": { "type": "NodePort", "ports": [ { "name": "query", "port": 80, "targetPort": "query", "nodePort": 31002, "protocol": "TCP" }, { "name": "grpc", "port": 16685, "targetPort": "grpc", "protocol": "TCP" }, { "name": "admin", "port": 16687, "targetPort": "admin", "protocol": "TCP" } ] } }'
